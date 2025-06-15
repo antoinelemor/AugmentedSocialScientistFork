@@ -12,3 +12,4 @@ from .models import RussianBert
 from .models import SpanishBert
 from .models import SwedishBert
 from .models import XLMRoberta
+from .parallel_inference import parallel_predict
