@@ -133,7 +133,7 @@ Hyper‑parameters inside `reinforced_training` (batch size, LR, `pos_weight`) c
 
 ```bash
 git clone https://github.com/antoinelemor/AugmentedSocialScientistFork.git
-cd AugmentedSocialScientist
+cd AugmentedSocialScientistFork
 pip install -e .
 ```
 
