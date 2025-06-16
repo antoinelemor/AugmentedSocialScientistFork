@@ -66,7 +66,7 @@ A one‑line message confirms the choice at runtime.
 ## 7  Quick‑start
 
 ```python
-from augmented_social_scientist import BertBase
+from AugmentedSocialScientistFork import BertBase
 
 # 1 – encode data
 model = BertBase(model_name="bert-base-cased")
