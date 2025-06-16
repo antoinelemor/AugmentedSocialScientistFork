@@ -351,7 +351,7 @@ class BertBase(BertABC):
         best_scores = None  # Will store final best (precision, recall, f1, support)
         if reinforced_epochs is not None:
             n_epochs_reinforced = reinforced_epochs
-            
+
         # =============== Normal Training Loop ===============
         for i_epoch in range(n_epochs):
             print("")
@@ -740,8 +740,6 @@ class BertBase(BertABC):
         best_metric_val = previous_best_metric
         best_model_path_local = base_model_path  # Start from the best model from normal training
         best_scores = None
-        if reinforced_epochs is not None:
-            n_epochs_reinforced = reinforced_epochs  # Allow user to override n_epochs_reinforced
 
         # Collect test labels for final metrics
         test_labels = []
