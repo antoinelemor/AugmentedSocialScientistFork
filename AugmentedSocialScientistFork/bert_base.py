@@ -185,6 +185,7 @@ class BertBase(BertABC):
             f1_class_1_weight: float = 0.7,
             reinforced_learning: bool = False,
             n_epochs_reinforced: int = 2,
+            reinforced_epochs: int | None = None,   # ← nouveau
             rescue_low_class1_f1: bool = False,
             f1_1_rescue_threshold: float = 0.0
     ) -> Tuple[Any, Any, Any, Any]:
@@ -348,7 +349,9 @@ class BertBase(BertABC):
         best_metric_val = -1.0
         best_model_path = None
         best_scores = None  # Will store final best (precision, recall, f1, support)
-
+        if reinforced_epochs is not None:
+            n_epochs_reinforced = reinforced_epochs
+            
         # =============== Normal Training Loop ===============
         for i_epoch in range(n_epochs):
             print("")
@@ -737,6 +740,8 @@ class BertBase(BertABC):
         best_metric_val = previous_best_metric
         best_model_path_local = base_model_path  # Start from the best model from normal training
         best_scores = None
+        if reinforced_epochs is not None:
+            n_epochs_reinforced = reinforced_epochs  # Allow user to override n_epochs_reinforced
 
         # Collect test labels for final metrics
         test_labels = []
