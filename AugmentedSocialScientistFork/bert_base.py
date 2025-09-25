@@ -757,7 +757,14 @@ class BertBase(BertABC):
             # Append to training_metrics.csv (normal training phase)
             with open(training_metrics_csv, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
+
+                # Get timestamp for this entry
+                current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
                 row = [
+                    model_identifier if model_identifier else "",
+                    self.model_name if hasattr(self, 'model_name') else self.__class__.__name__,
+                    current_timestamp,
                     i_epoch + 1,
                     avg_train_loss,
                     avg_val_loss,
@@ -845,6 +852,9 @@ class BertBase(BertABC):
                 # Log this new best model
                 with open(best_models_csv, mode='a', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
+
+                    # Note: headers for best_models.csv should include model info
+                    # but the row structure needs to match what was defined in headers
                     row = [
                         i_epoch + 1,
                         avg_train_loss,
