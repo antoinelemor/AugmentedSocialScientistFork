@@ -1141,6 +1141,10 @@ class BenchmarkRunner:
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        # Also create a consolidated file that accumulates all benchmarks
+        consolidated_file = logs_dir / "benchmark_all_runs_consolidated.csv"
+        consolidated_best_file = logs_dir / "benchmark_best_models_consolidated.csv"
+
         # Save detailed log with ALL models and ALL metrics
         if save_detailed and results:
             detailed_file = logs_dir / f"benchmark_detailed_{timestamp}.csv"
@@ -1213,6 +1217,54 @@ class BenchmarkRunner:
             self.logger.info(f"💾 Detailed benchmark log saved: {detailed_file}")
             print(f"\n💾 Detailed log saved: {detailed_file}")
 
+            # Also append to consolidated file
+            consolidated_exists = consolidated_file.exists()
+            with open(consolidated_file, 'a' if consolidated_exists else 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=headers)
+                if not consolidated_exists:
+                    writer.writeheader()
+
+                # Re-write all rows to consolidated file
+                for rank, result in enumerate(results, 1):
+                    selector = ModelSelector(verbose=False)
+                    huggingface_name = result['model_name']
+                    if result['model_name'] in selector.MODEL_PROFILES:
+                        huggingface_name = selector.MODEL_PROFILES[result['model_name']].name
+
+                    row = {
+                        'timestamp': timestamp,
+                        'rank': rank,
+                        'model_name': result['model_name'],
+                        'huggingface_name': huggingface_name,
+                        'tested_languages': '|'.join(result.get('tested_languages', [])),
+                        'f1_macro': result.get('f1_score', 0),
+                        'accuracy': result.get('accuracy', 0),
+                        'f1_class_0': result.get('f1_class_0', 0),
+                        'f1_class_1': result.get('f1_class_1', 0),
+                        'precision_0': result.get('precision_0', 0),
+                        'precision_1': result.get('precision_1', 0),
+                        'recall_0': result.get('recall_0', 0),
+                        'recall_1': result.get('recall_1', 0),
+                        'training_time': result.get('training_time', 0),
+                        'inference_time_ms': result.get('inference_time', 0) * 1000,
+                        'data_path': str(data_path),
+                        'benchmark_epochs': benchmark_epochs,
+                        'total_samples': len(result.get('tested_languages', [])) * 100
+                    }
+
+                    if is_multilingual and result.get('language_metrics'):
+                        for lang in detected_languages:
+                            lang_metrics = result['language_metrics'].get(lang, {})
+                            row[f'{lang}_f1_macro'] = lang_metrics.get('macro_f1', 0)
+                            row[f'{lang}_accuracy'] = lang_metrics.get('accuracy', 0)
+                            row[f'{lang}_f1_0'] = lang_metrics.get('f1_0', 0)
+                            row[f'{lang}_f1_1'] = lang_metrics.get('f1_1', 0)
+                            row[f'{lang}_samples'] = lang_metrics.get('samples', 0)
+
+                    writer.writerow(row)
+
+            print(f"✅ Consolidated log updated: {consolidated_file}")
+
         # Save best models summary
         if save_best and results:
             best_file = logs_dir / f"benchmark_best_models_{timestamp}.csv"
@@ -1275,6 +1327,43 @@ class BenchmarkRunner:
 
             self.logger.info(f"🏆 Best models summary saved: {best_file}")
             print(f"🏆 Best models saved: {best_file}")
+
+            # Also append to consolidated best models file
+            consolidated_best_exists = consolidated_best_file.exists()
+            with open(consolidated_best_file, 'a' if consolidated_best_exists else 'w', newline='', encoding='utf-8') as f:
+                headers_best = ['timestamp', 'criterion', 'model_name', 'huggingface_name', 'f1_score',
+                               'accuracy', 'f1_class_1', 'inference_time_ms', 'reason', 'data_path']
+                writer = csv.DictWriter(f, fieldnames=headers_best)
+                if not consolidated_best_exists:
+                    writer.writeheader()
+
+                for criterion, model in best_models.items():
+                    if model:
+                        huggingface_name = model['model_name']
+                        if model['model_name'] in selector.MODEL_PROFILES:
+                            huggingface_name = selector.MODEL_PROFILES[model['model_name']].name
+
+                        reason = {
+                            'overall_f1': f"Highest macro F1 score ({model['f1_score']:.3f})",
+                            'minority_class': f"Best minority class detection (F1: {model['f1_class_1']:.3f})",
+                            'fastest': f"Fastest inference ({model['inference_time']*1000:.1f}ms)",
+                            'balanced': f"Most balanced predictions (diff: {abs(model.get('f1_class_0', 0) - model.get('f1_class_1', 0)):.3f})"
+                        }.get(criterion, f"Best for {criterion}")
+
+                        writer.writerow({
+                            'timestamp': timestamp,
+                            'criterion': criterion,
+                            'model_name': model['model_name'],
+                            'huggingface_name': huggingface_name,
+                            'f1_score': model.get('f1_score', 0),
+                            'accuracy': model.get('accuracy', 0),
+                            'f1_class_1': model.get('f1_class_1', 0),
+                            'inference_time_ms': model.get('inference_time', 0) * 1000,
+                            'reason': reason,
+                            'data_path': str(data_path)
+                        })
+
+            print(f"✅ Consolidated best models log updated: {consolidated_best_file}")
 
         # Also save a JSON version for programmatic access
         json_file = logs_dir / f"benchmark_results_{timestamp}.json"

@@ -248,7 +248,8 @@ class BertBase(BertABC):
             rescue_low_class1_f1: bool = False,
             track_languages: bool = False,
             language_info: Optional[List[str]] = None,
-            f1_1_rescue_threshold: float = 0.0
+            f1_1_rescue_threshold: float = 0.0,
+            model_identifier: Optional[str] = None
     ) -> Tuple[Any, Any, Any, Any]:
         """
         Train, evaluate, and (optionally) save a BERT model. This method also logs training and validation
@@ -332,6 +333,9 @@ class BertBase(BertABC):
 
         # Initialize CSV for normal training metrics
         csv_headers = [
+            "model_identifier",
+            "model_name",
+            "timestamp",
             "epoch",
             "train_loss",
             "val_loss",
@@ -363,9 +367,20 @@ class BertBase(BertABC):
                     f"{lang}_macro_f1"
                 ])
 
-        with open(training_metrics_csv, mode='w', newline='', encoding='utf-8') as f:
+        # Check if file exists to decide whether to write headers
+        if os.path.exists(training_metrics_csv):
+            # Append to existing file
+            mode = 'a'
+            write_headers = False
+        else:
+            # Create new file with headers
+            mode = 'w'
+            write_headers = True
+
+        with open(training_metrics_csv, mode=mode, newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(csv_headers)
+            if write_headers:
+                writer.writerow(csv_headers)
 
         # Initialize CSV for best models (both normal and reinforced)
         # We'll include a "training_phase" column to indicate normal or reinforced.
@@ -406,9 +421,20 @@ class BertBase(BertABC):
             "training_phase"
         ])
 
-        with open(best_models_csv, mode='w', newline='', encoding='utf-8') as f:
+        # Check if file exists to decide whether to write headers
+        if os.path.exists(best_models_csv):
+            # Append to existing file
+            mode = 'a'
+            write_headers = False
+        else:
+            # Create new file with headers
+            mode = 'w'
+            write_headers = True
+
+        with open(best_models_csv, mode=mode, newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(best_models_headers)
+            if write_headers:
+                writer.writerow(best_models_headers)
 
         # Collect test labels for classification report
         test_labels = []
