@@ -14,11 +14,11 @@ this repository provides a comprehensive framework for fine‑tuning transformer
 | **command‑line interface** | comprehensive CLI for training orchestration with interactive menus, automatic model selection, benchmark mode, and full parameter configuration. supports both interactive and programmatic usage. |
 | **language‑aware selection** | automatically detects languages in data and selects appropriate models: French models for French text, English models for English, multilingual models for mixed data. each model tested only on supported languages. |
 | **intelligent model selection** | automatic model recommendation based on task complexity, resource constraints, and performance requirements through sophisticated scoring algorithms. |
-| **comprehensive benchmarking** | built‑in benchmark runner tests all appropriate models, generates detailed CSV/JSON logs with HuggingFace model names, supports language‑specific evaluation. |
+| **comprehensive benchmarking** | built‑in benchmark runner tests all appropriate models, generates detailed CSV/JSON logs with HuggingFace model names, supports language‑specific evaluation. NEW: consolidated logging accumulates all benchmark runs in persistent CSV files. |
 | **multilingual optimization** | dedicated multilingual model selector with language distribution analysis, performance benchmarking per language, and ensemble support for robust cross‑lingual tasks. |
 | **metadata‑aware training** | support for JSONL/CSV data with metadata (id, language, custom fields), enabling stratified analysis and per‑language performance tracking throughout training. |
 | **multi‑label training** | train separate models for multiple labels from single dataset, with automatic naming based on label and language combinations, supporting both multilingual and language‑specific approaches. |
-| **comprehensive metric logging** | every epoch appends to CSV logs with losses, per‑class metrics, macro F1, plus separate language‑specific performance tracking in JSON format with HuggingFace model identifiers. |
+| **comprehensive metric logging** | every epoch appends to CSV logs with losses, per‑class metrics, macro F1, plus separate language‑specific performance tracking. NEW: consolidated logs maintain complete history across all training sessions with model identifiers. |
 | **per‑epoch checkpoints** | lightweight checkpoint after each epoch; only the best checkpoint is retained to save disk space with configurable selection criteria. |
 | **smart best‑model selection** | by default maximizes 0.7 × F1₁ + 0.3 × macro‑F1. weights and formula can be customized. |
 | **automatic reinforced training** | when positive‑class F1 stays below 0.60, launches adaptive reinforced phase with class‑weighted loss, oversampling, larger batches and reduced learning rate. |
@@ -383,7 +383,58 @@ tracker.save_detailed_report('performance_report.json')
 tracker.print_summary()
 ```
 
-## 9. reinforced training
+## 9. consolidated logging system
+
+the package now features a robust consolidated logging system that maintains complete history across all training and benchmarking sessions:
+
+### training logs
+
+**per‑session files (timestamped):**
+- `training_metrics.csv`: epoch‑by‑epoch metrics for current session
+- `best_models.csv`: best model checkpoints for current session
+- `training_all_models_YYYYMMDD_HHMMSS.csv`: all models trained in this session
+- `training_best_models_YYYYMMDD_HHMMSS.csv`: best models from this session
+
+**consolidated files (persistent across sessions):**
+- `training_all_models_consolidated.csv`: complete history of ALL models ever trained
+- `training_best_models_consolidated.csv`: ALL best models across all sessions
+- these files append new results without overwriting previous data
+
+### benchmark logs
+
+**per‑benchmark files:**
+- `benchmark_detailed_YYYYMMDD_HHMMSS.csv`: all tested models with full metrics
+- `benchmark_best_models_YYYYMMDD_HHMMSS.csv`: best models by various criteria
+
+**consolidated benchmark files:**
+- `benchmark_all_runs_consolidated.csv`: accumulates ALL benchmark runs over time
+- `benchmark_best_models_consolidated.csv`: best models from ALL benchmark sessions
+
+### benefits of consolidated logging
+
+- **experiment tracking**: maintain complete history of all experiments
+- **performance evolution**: track how models improve over time
+- **reproducibility**: every run is logged with timestamps and parameters
+- **comparison**: easily compare results across different datasets or configurations
+- **audit trail**: comprehensive record for research documentation
+
+### example usage
+
+```python
+# after training, consolidated logs are automatically updated
+model.run_training(
+    train_loader, test_loader,
+    metrics_output_dir="./training_logs",
+    model_identifier="DeBERTa_v3_experiment_1"  # optional identifier
+)
+
+# consolidated files will contain:
+# - this run's metrics WITH the model_identifier
+# - all previous runs' metrics preserved
+# - automatic timestamping for each entry
+```
+
+## 10. reinforced training
 
 triggered automatically when F1(class 1) < 0.60 after main training:
 - oversampling of minority class through WeightedRandomSampler
@@ -392,7 +443,7 @@ triggered automatically when F1(class 1) < 0.60 after main training:
 - full logging to `reinforced_training_metrics.csv`
 - optional rescue logic for severely imbalanced cases
 
-## 10. ensemble models
+## 11. ensemble models
 
 ### creating multilingual ensembles
 
@@ -417,7 +468,7 @@ ensemble = create_multilingual_ensemble(
 predictions = ensemble.predict(test_loader)
 ```
 
-## 11. data splitting with stratification
+## 12. data splitting with stratification
 
 ```python
 from AugmentedSocialScientistFork import DataSplitter, SplitConfig
@@ -447,7 +498,7 @@ train, val, test = create_stratified_splits(
 )
 ```
 
-## 12. parallel inference
+## 13. parallel inference
 
 ```python
 from AugmentedSocialScientistFork import parallel_predict
@@ -468,7 +519,7 @@ predictions = parallel_predict(
 )
 ```
 
-## 13. configuration reference
+## 14. configuration reference
 
 | argument | default | purpose |
 |----------|---------|---------|
@@ -484,7 +535,7 @@ predictions = parallel_predict(
 | `f1_1_rescue_threshold` | 0.0 | minimum F1₁ improvement for rescue |
 | `track_languages` | True | enable per‑language performance tracking |
 
-## 14. installation
+## 15. installation
 
 ```bash
 pip install git+https://github.com/antoinelemor/AugmentedSocialScientistFork
@@ -524,7 +575,7 @@ pip install -e ".[dev]"
 pip install -e ".[benchmarking]"
 ```
 
-## 15. command‑line interface (CLI)
+## 16. command‑line interface (CLI)
 
 ### interactive training CLI
 
@@ -682,11 +733,23 @@ best_model = runner.run_comprehensive_benchmark(
 ```
 
 output files include:
-- `benchmark_detailed_*.csv`: all models with HuggingFace names and metrics
-- `benchmark_best_models_*.csv`: summary of best models
-- `benchmark_results_*.json`: complete results in JSON format
 
-## 16. quick start examples
+**per‑execution files (timestamped):**
+- `benchmark_detailed_YYYYMMDD_HHMMSS.csv`: all models with HuggingFace names and metrics for this run
+- `benchmark_best_models_YYYYMMDD_HHMMSS.csv`: summary of best models for this run
+- `benchmark_results_YYYYMMDD_HHMMSS.json`: complete results in JSON format
+
+**consolidated files (accumulate all runs):**
+- `benchmark_all_runs_consolidated.csv`: ALL metrics from ALL benchmark executions across time
+- `benchmark_best_models_consolidated.csv`: best models from ALL benchmark sessions
+
+the consolidated files append new results without overwriting, providing a complete history of all benchmarking sessions. this enables:
+- tracking model performance evolution over time
+- comparing results across different datasets
+- analyzing performance trends with different hyperparameters
+- maintaining a comprehensive audit trail of all experiments
+
+## 17. quick start examples
 
 ### simple binary classification
 
@@ -751,7 +814,7 @@ model.run_training(
 )
 ```
 
-## 16. advanced usage
+## 18. advanced usage
 
 ### custom model configuration
 
@@ -793,7 +856,7 @@ for epoch_data in lang_perf:
         print(f"epoch {epoch}, {lang}: F1={metrics['macro_f1']:.3f}")
 ```
 
-## 17. model comparison guide
+## 19. model comparison guide
 
 | model | parameters | speed | accuracy | best for |
 |-------|------------|-------|----------|----------|
@@ -807,7 +870,7 @@ for epoch_data in lang_perf:
 | Longformer‑base | 148M | ★★ | ★★★★ | long documents (4096 tokens) |
 | mDeBERTa‑v3 | 278M | ★★ | ★★★★★ | multilingual tasks |
 
-## 18. license & citation
+## 20. license & citation
 
 this project is under MIT license.
 
@@ -815,7 +878,7 @@ if used in academic work, please cite:
 - original repository: rubingshen/AugmentedSocialScientist
 - this enhanced version: antoinelemor/AugmentedSocialScientistFork
 
-## 19. contributing
+## 21. contributing
 
 contributions welcome. please ensure:
 - code follows existing style conventions
