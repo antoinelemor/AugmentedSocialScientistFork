@@ -387,7 +387,8 @@ class BenchmarkRunner:
             rescue_low_class1_f1=self.config.rescue_low_class1_f1,
             f1_1_rescue_threshold=self.config.f1_rescue_threshold,
             track_languages=self.config.track_languages,
-            language_info=test_languages if self.config.track_languages and test_languages else None,
+            language_info=test_languages,
+            model_identifier=f"{cat_name}_{language}_{model.__class__.__name__}" if self.config.track_languages and test_languages else None,
         )
 
         best_path = model.last_saved_model_path
@@ -971,7 +972,8 @@ class BenchmarkRunner:
                     save_model_as=f"benchmark_{model_name.lower()}",
                     track_languages=self.config.track_languages and filtered_test_languages is not None,
                     language_info=filtered_test_languages if filtered_test_languages else None,
-                    reinforced_learning=False  # Disable for benchmark
+                    reinforced_learning=False,  # Disable for benchmark
+                    model_identifier=f"benchmark_{model_name.lower()}"
                 )
 
                 training_time = time.time() - start_time

@@ -385,6 +385,9 @@ class BertBase(BertABC):
         # Initialize CSV for best models (both normal and reinforced)
         # We'll include a "training_phase" column to indicate normal or reinforced.
         best_models_headers = [
+            "model_identifier",
+            "model_type",
+            "timestamp",
             "epoch",
             "train_loss",
             "val_loss",
@@ -849,53 +852,97 @@ class BertBase(BertABC):
                 else:
                     best_model_path = None
 
-                # Log this new best model
-                with open(best_models_csv, mode='a', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f)
+                # Check if this is truly the best model for this model type
+                # Read existing best_models.csv to check if we already have a better model
+                should_update_best = True
+                model_type = self.model_name if hasattr(self, 'model_name') else self.__class__.__name__
 
-                    # Note: headers for best_models.csv should include model info
-                    # but the row structure needs to match what was defined in headers
-                    row = [
-                        i_epoch + 1,
-                        avg_train_loss,
-                        avg_val_loss,
-                        precision_0,
-                        recall_0,
-                        f1_0,
-                        support_0,
-                        precision_1,
-                        recall_1,
-                        f1_1,
-                        support_1,
-                        macro_f1
-                    ]
+                if os.path.exists(best_models_csv) and os.path.getsize(best_models_csv) > 0:
+                    # Read existing best models to check if this model type already has a better score
+                    with open(best_models_csv, 'r', encoding='utf-8') as f_read:
+                        reader = csv.DictReader(f_read)
+                        for existing_row in reader:
+                            # Check if same model type and identifier
+                            if (existing_row.get('model_identifier') == (model_identifier if model_identifier else "") and
+                                existing_row.get('model_type') == model_type):
+                                # Compare scores
+                                existing_macro_f1 = float(existing_row.get('macro_f1', 0))
+                                if existing_macro_f1 >= macro_f1:
+                                    should_update_best = False
+                                    break
 
-                    # Add language metrics if available
-                    if track_languages and language_info is not None and 'language_metrics' in locals():
-                        unique_languages = list(set(language_info))
-                        for lang in sorted(unique_languages):
-                            if lang in language_metrics:
-                                row.extend([
-                                    language_metrics[lang]['accuracy'],
-                                    language_metrics[lang]['precision_0'],
-                                    language_metrics[lang]['recall_0'],
-                                    language_metrics[lang]['f1_0'],
-                                    language_metrics[lang]['support_0'],
-                                    language_metrics[lang]['precision_1'],
-                                    language_metrics[lang]['recall_1'],
-                                    language_metrics[lang]['f1_1'],
-                                    language_metrics[lang]['support_1'],
-                                    language_metrics[lang]['macro_f1']
-                                ])
-                            else:
-                                row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+                if should_update_best:
+                    # First, remove any existing entry for this model type/identifier combination
+                    if os.path.exists(best_models_csv) and os.path.getsize(best_models_csv) > 0:
+                        # Read all rows
+                        rows_to_keep = []
+                        with open(best_models_csv, 'r', encoding='utf-8') as f_read:
+                            reader = csv.DictReader(f_read)
+                            headers_dict = reader.fieldnames
+                            for row in reader:
+                                # Keep rows that are NOT the same model type/identifier
+                                if not (row.get('model_identifier') == (model_identifier if model_identifier else "") and
+                                       row.get('model_type') == model_type):
+                                    rows_to_keep.append(row)
 
-                    row.extend([
-                        best_model_path if best_model_path else "Not saved to disk",
-                        "normal"  # training phase
-                    ])
+                        # Rewrite the file without the old entry
+                        if headers_dict:
+                            with open(best_models_csv, 'w', newline='', encoding='utf-8') as f_write:
+                                writer = csv.DictWriter(f_write, fieldnames=headers_dict)
+                                writer.writeheader()
+                                writer.writerows(rows_to_keep)
 
-                    writer.writerow(row)
+                    # Now append the new best model
+                    with open(best_models_csv, mode='a', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+
+                        # Get timestamp
+                        current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                        row = [
+                            model_identifier if model_identifier else "",
+                            model_type,
+                            current_timestamp,
+                            i_epoch + 1,
+                            avg_train_loss,
+                            avg_val_loss,
+                            precision_0,
+                            recall_0,
+                            f1_0,
+                            support_0,
+                            precision_1,
+                            recall_1,
+                            f1_1,
+                            support_1,
+                            macro_f1
+                        ]
+
+                        # Add language metrics if available
+                        if track_languages and language_info is not None and 'language_metrics' in locals():
+                            unique_languages = list(set(language_info))
+                            for lang in sorted(unique_languages):
+                                if lang in language_metrics:
+                                    row.extend([
+                                        language_metrics[lang]['accuracy'],
+                                        language_metrics[lang]['precision_0'],
+                                        language_metrics[lang]['recall_0'],
+                                        language_metrics[lang]['f1_0'],
+                                        language_metrics[lang]['support_0'],
+                                        language_metrics[lang]['precision_1'],
+                                        language_metrics[lang]['recall_1'],
+                                        language_metrics[lang]['f1_1'],
+                                        language_metrics[lang]['support_1'],
+                                        language_metrics[lang]['macro_f1']
+                                    ])
+                                else:
+                                    row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+                        row.extend([
+                            best_model_path if best_model_path else "Not saved to disk",
+                            "normal"  # training phase
+                        ])
+
+                        writer.writerow(row)
 
                 best_scores = precision_recall_fscore_support(test_labels, preds)
 
@@ -1490,50 +1537,93 @@ class BertBase(BertABC):
                 else:
                     best_model_path_local = None
 
-                # Log in best_models.csv
-                with open(best_models_csv, mode='a', newline='', encoding='utf-8') as f:
-                    writer = csv.writer(f)
-                    row = [
-                        epoch + 1,
-                        avg_train_loss,
-                        avg_val_loss,
-                        precision_0,
-                        recall_0,
-                        f1_0,
-                        support_0,
-                        precision_1,
-                        recall_1,
-                        f1_1,
-                        support_1,
-                        macro_f1
-                    ]
+                # Check if this is truly the best model for this model type (reinforced)
+                should_update_best = True
+                model_type = self.model_name if hasattr(self, 'model_name') else self.__class__.__name__
 
-                    # Add language metrics if available
-                    if track_languages and language_info is not None and language_metrics:
-                        unique_languages = list(set(language_info))
-                        for lang in sorted(unique_languages):
-                            if lang in language_metrics:
-                                row.extend([
-                                    language_metrics[lang]['accuracy'],
-                                    language_metrics[lang]['precision_0'],
-                                    language_metrics[lang]['recall_0'],
-                                    language_metrics[lang]['f1_0'],
-                                    language_metrics[lang]['support_0'],
-                                    language_metrics[lang]['precision_1'],
-                                    language_metrics[lang]['recall_1'],
-                                    language_metrics[lang]['f1_1'],
-                                    language_metrics[lang]['support_1'],
-                                    language_metrics[lang]['macro_f1']
-                                ])
-                            else:
-                                row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+                if os.path.exists(best_models_csv) and os.path.getsize(best_models_csv) > 0:
+                    # Read existing best models to check if this model type already has a better score
+                    with open(best_models_csv, 'r', encoding='utf-8') as f_read:
+                        reader = csv.DictReader(f_read)
+                        for existing_row in reader:
+                            # Check if same model type and identifier
+                            if (existing_row.get('model_identifier') == (model_identifier if model_identifier else "") and
+                                existing_row.get('model_type') == model_type):
+                                # Compare scores
+                                existing_macro_f1 = float(existing_row.get('macro_f1', 0))
+                                if existing_macro_f1 >= macro_f1:
+                                    should_update_best = False
+                                    break
 
-                    row.extend([
-                        best_model_path_local if best_model_path_local else "Not saved to disk",
-                        "reinforced"  # training phase
-                    ])
+                if should_update_best:
+                    # Remove any existing entry for this model type/identifier
+                    if os.path.exists(best_models_csv) and os.path.getsize(best_models_csv) > 0:
+                        rows_to_keep = []
+                        with open(best_models_csv, 'r', encoding='utf-8') as f_read:
+                            reader = csv.DictReader(f_read)
+                            headers_dict = reader.fieldnames
+                            for row in reader:
+                                if not (row.get('model_identifier') == (model_identifier if model_identifier else "") and
+                                       row.get('model_type') == model_type):
+                                    rows_to_keep.append(row)
 
-                    writer.writerow(row)
+                        if headers_dict:
+                            with open(best_models_csv, 'w', newline='', encoding='utf-8') as f_write:
+                                writer = csv.DictWriter(f_write, fieldnames=headers_dict)
+                                writer.writeheader()
+                                writer.writerows(rows_to_keep)
+
+                    # Log in best_models.csv
+                    with open(best_models_csv, mode='a', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+
+                        # Get timestamp
+                        current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                        row = [
+                            model_identifier if model_identifier else "",
+                            model_type,
+                            current_timestamp,
+                            epoch + 1,
+                            avg_train_loss,
+                            avg_val_loss,
+                            precision_0,
+                            recall_0,
+                            f1_0,
+                            support_0,
+                            precision_1,
+                            recall_1,
+                            f1_1,
+                            support_1,
+                            macro_f1
+                        ]
+
+                        # Add language metrics if available
+                        if track_languages and language_info is not None and language_metrics:
+                            unique_languages = list(set(language_info))
+                            for lang in sorted(unique_languages):
+                                if lang in language_metrics:
+                                    row.extend([
+                                        language_metrics[lang]['accuracy'],
+                                        language_metrics[lang]['precision_0'],
+                                        language_metrics[lang]['recall_0'],
+                                        language_metrics[lang]['f1_0'],
+                                        language_metrics[lang]['support_0'],
+                                        language_metrics[lang]['precision_1'],
+                                        language_metrics[lang]['recall_1'],
+                                        language_metrics[lang]['f1_1'],
+                                        language_metrics[lang]['support_1'],
+                                        language_metrics[lang]['macro_f1']
+                                    ])
+                                else:
+                                    row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+                        row.extend([
+                            best_model_path_local if best_model_path_local else "Not saved to disk",
+                            "reinforced"  # training phase
+                        ])
+
+                        writer.writerow(row)
 
                 best_scores = precision_recall_fscore_support(eval_labels, val_preds)
 
