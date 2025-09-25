@@ -1,0 +1,109 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "AugmentedSocialScientistFork"
+version = "3.1.0"
+authors = [
+    {name = "Antoine Lemor", email = "antoine.lemor@umontreal.ca"}
+]
+maintainers = [
+    {name = "Antoine Lemor", email = "antoine.lemor@umontreal.ca"}
+]
+description = "An augmented fork of AugmentedSocialScientist that streamlines BERT/CamemBERT fine-tuning for social-science datasets with per-epoch logging, intelligent best-model selection, optional reinforced training, and seamless CPU/CUDA/MPS support."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
+    "Natural Language :: French",
+]
+keywords = [
+    "bert",
+    "transformers",
+    "nlp",
+    "multi-label",
+    "classification",
+    "multilingual",
+    "deberta",
+    "roberta",
+    "electra",
+    "xlm-roberta",
+    "machine-learning",
+    "deep-learning",
+    "pytorch",
+    "huggingface"
+]
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.35.0",
+    "pandas>=1.5.0",
+    "numpy>=1.21.0",
+    "scikit-learn>=1.0.0",
+    "scipy>=1.7.0",
+    "tqdm>=4.62.0",
+    "langdetect>=1.0.9",
+    "colorama>=0.4.6",
+    "tabulate>=0.9.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+    "mypy>=0.990",
+    "isort>=5.10.0"
+]
+docs = [
+    "sphinx>=4.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "myst-parser>=0.18.0"
+]
+notebooks = [
+    "jupyter>=1.0.0",
+    "ipywidgets>=8.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.12.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/antoinelemor/AugmentedSocialScientistFork"
+"Bug Tracker" = "https://github.com/antoinelemor/AugmentedSocialScientistFork/issues"
+"Documentation" = "https://github.com/antoinelemor/AugmentedSocialScientistFork#readme"
+"Source Code" = "https://github.com/antoinelemor/AugmentedSocialScientistFork"
+
+[tool.setuptools]
+packages = ["AugmentedSocialScientistFork"]
+
+[tool.setuptools.package-dir]
+AugmentedSocialScientistFork = "AugmentedSocialScientistFork"
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
