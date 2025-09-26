@@ -823,6 +823,7 @@ class BenchmarkRunner:
                 detected_langs_normalized.append(lang.lower())
 
         # Select models based on language support
+        french_models_selected = []
         for model_name, profile in model_profiles.items():
             supported_langs = profile.supported_languages
 
@@ -835,9 +836,16 @@ class BenchmarkRunner:
                 for i, norm_lang in enumerate(detected_langs_normalized):
                     if norm_lang in supported_langs:
                         matching_languages.append(detected_languages[i])
+                        # Track French models specifically
+                        if norm_lang == 'fr' and model_name not in french_models_selected:
+                            french_models_selected.append(model_name)
 
                 if matching_languages:
                     models_with_languages.append((model_name, matching_languages))
+
+        # Log French models specifically if French was detected
+        if 'fr' in detected_langs_normalized and french_models_selected:
+            self.logger.info(f"🇫🇷 French-specific models selected: {', '.join(sorted(french_models_selected))}")
 
         # If not testing all models, select a representative subset
         if not test_all:
@@ -891,7 +899,8 @@ class BenchmarkRunner:
                 self.logger.info(f"  Multilingual models ({len(multilingual_models)}): {', '.join(sorted(multilingual_models))}")
 
             for lang, models in language_specific.items():
-                self.logger.info(f"  {lang}-specific models ({len(models)}): {', '.join(sorted(models))}")
+                lang_emoji = "🇫🇷" if lang.upper() == 'FR' else "🇬🇧" if lang.upper() == 'EN' else "🌍"
+                self.logger.info(f"  {lang_emoji} {lang}-specific models ({len(models)}): {', '.join(sorted(models))}")
 
         return models_with_languages
 

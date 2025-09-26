@@ -384,6 +384,8 @@ class BertBase(BertABC):
 
         # Initialize CSV for best models (both normal and reinforced)
         # We'll include a "training_phase" column to indicate normal or reinforced.
+        # To ensure consistency across different models with different languages,
+        # we'll use a standard set of language columns (EN, FR) always present
         best_models_headers = [
             "model_identifier",
             "model_type",
@@ -402,22 +404,22 @@ class BertBase(BertABC):
             "macro_f1"
         ]
 
-        # Add language-specific headers for best models
-        if track_languages and language_info is not None:
-            unique_langs = sorted(list(set(language_info)))
-            for lang in unique_langs:
-                best_models_headers.extend([
-                    f"{lang}_accuracy",
-                    f"{lang}_precision_0",
-                    f"{lang}_recall_0",
-                    f"{lang}_f1_0",
-                    f"{lang}_support_0",
-                    f"{lang}_precision_1",
-                    f"{lang}_recall_1",
-                    f"{lang}_f1_1",
-                    f"{lang}_support_1",
-                    f"{lang}_macro_f1"
-                ])
+        # Always add standard language columns (EN, FR) for consistency
+        # This ensures all rows have the same structure
+        standard_languages = ['EN', 'FR']
+        for lang in standard_languages:
+            best_models_headers.extend([
+                f"{lang}_accuracy",
+                f"{lang}_precision_0",
+                f"{lang}_recall_0",
+                f"{lang}_f1_0",
+                f"{lang}_support_0",
+                f"{lang}_precision_1",
+                f"{lang}_recall_1",
+                f"{lang}_f1_1",
+                f"{lang}_support_1",
+                f"{lang}_macro_f1"
+            ])
 
         best_models_headers.extend([
             "saved_model_path",
@@ -917,25 +919,26 @@ class BertBase(BertABC):
                             macro_f1
                         ]
 
-                        # Add language metrics if available
-                        if track_languages and language_info is not None and 'language_metrics' in locals():
-                            unique_languages = list(set(language_info))
-                            for lang in sorted(unique_languages):
-                                if lang in language_metrics:
-                                    row.extend([
-                                        language_metrics[lang]['accuracy'],
-                                        language_metrics[lang]['precision_0'],
-                                        language_metrics[lang]['recall_0'],
-                                        language_metrics[lang]['f1_0'],
-                                        language_metrics[lang]['support_0'],
-                                        language_metrics[lang]['precision_1'],
-                                        language_metrics[lang]['recall_1'],
-                                        language_metrics[lang]['f1_1'],
-                                        language_metrics[lang]['support_1'],
-                                        language_metrics[lang]['macro_f1']
-                                    ])
-                                else:
-                                    row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+                        # Add language metrics for standard languages (EN, FR)
+                        # Always add these columns to maintain CSV consistency
+                        standard_languages = ['EN', 'FR']
+                        for lang in standard_languages:
+                            if track_languages and language_info is not None and 'language_metrics' in locals() and lang in language_metrics:
+                                row.extend([
+                                    language_metrics[lang]['accuracy'],
+                                    language_metrics[lang]['precision_0'],
+                                    language_metrics[lang]['recall_0'],
+                                    language_metrics[lang]['f1_0'],
+                                    language_metrics[lang]['support_0'],
+                                    language_metrics[lang]['precision_1'],
+                                    language_metrics[lang]['recall_1'],
+                                    language_metrics[lang]['f1_1'],
+                                    language_metrics[lang]['support_1'],
+                                    language_metrics[lang]['macro_f1']
+                                ])
+                            else:
+                                # Fill with empty values to maintain CSV structure
+                                row.extend(['', '', '', '', '', '', '', '', '', ''])
 
                         row.extend([
                             best_model_path if best_model_path else "Not saved to disk",
@@ -1598,25 +1601,26 @@ class BertBase(BertABC):
                             macro_f1
                         ]
 
-                        # Add language metrics if available
-                        if track_languages and language_info is not None and language_metrics:
-                            unique_languages = list(set(language_info))
-                            for lang in sorted(unique_languages):
-                                if lang in language_metrics:
-                                    row.extend([
-                                        language_metrics[lang]['accuracy'],
-                                        language_metrics[lang]['precision_0'],
-                                        language_metrics[lang]['recall_0'],
-                                        language_metrics[lang]['f1_0'],
-                                        language_metrics[lang]['support_0'],
-                                        language_metrics[lang]['precision_1'],
-                                        language_metrics[lang]['recall_1'],
-                                        language_metrics[lang]['f1_1'],
-                                        language_metrics[lang]['support_1'],
-                                        language_metrics[lang]['macro_f1']
-                                    ])
-                                else:
-                                    row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+                        # Add language metrics for standard languages (EN, FR)
+                        # Always add these columns to maintain CSV consistency
+                        standard_languages = ['EN', 'FR']
+                        for lang in standard_languages:
+                            if track_languages and language_info is not None and language_metrics and lang in language_metrics:
+                                row.extend([
+                                    language_metrics[lang]['accuracy'],
+                                    language_metrics[lang]['precision_0'],
+                                    language_metrics[lang]['recall_0'],
+                                    language_metrics[lang]['f1_0'],
+                                    language_metrics[lang]['support_0'],
+                                    language_metrics[lang]['precision_1'],
+                                    language_metrics[lang]['recall_1'],
+                                    language_metrics[lang]['f1_1'],
+                                    language_metrics[lang]['support_1'],
+                                    language_metrics[lang]['macro_f1']
+                                ])
+                            else:
+                                # Fill with empty values to maintain CSV structure
+                                row.extend(['', '', '', '', '', '', '', '', '', ''])
 
                         row.extend([
                             best_model_path_local if best_model_path_local else "Not saved to disk",
