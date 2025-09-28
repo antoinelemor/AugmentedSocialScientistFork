@@ -181,6 +181,20 @@ class TrainingCLI:
                 max_val=50
             )
 
+            # Ask about reinforced learning
+            use_reinforced_bench = self._confirm(
+                "\n⚡ Enable reinforced learning for poor performers?",
+                default=True
+            )
+
+            # Ask about short sequence optimization
+            print("\n📏 Your data may contain short sequences (individual sentences).")
+            print("   Some models (Longformer, BigBird, ALBERT Large) are optimized for long documents.")
+            optimize_short_bench = self._confirm(
+                "Optimize parameters for short sequences?",
+                default=True
+            )
+
             # Detect languages in data
             print("\n🔍 Analyzing dataset...")
             languages = self._detect_data_languages(data_file)
@@ -190,6 +204,10 @@ class TrainingCLI:
             if not selected_models:
                 print("\n❌ No models selected for benchmark")
                 return 1
+
+            # Pass benchmark options to config
+            config.use_reinforced_in_benchmark = use_reinforced_bench if 'use_reinforced_bench' in locals() else False
+            config.optimize_for_short_sequences = optimize_short_bench if 'optimize_short_bench' in locals() else False
 
             best_model_name = self._run_benchmark(
                 data_file=data_file,
@@ -295,6 +313,20 @@ class TrainingCLI:
         balance = self._confirm("\n📊 Balance classes (undersample)?")
         test_all = False  # We handle selection above
 
+        # Ask about reinforced learning
+        use_reinforced = self._confirm(
+            "\n⚡ Enable reinforced learning for poor performers?",
+            default=True
+        )
+
+        # Ask about short sequence optimization
+        print("\n📏 Your data may contain short sequences (individual sentences).")
+        print("   Some models (Longformer, BigBird, ALBERT Large) are optimized for long documents.")
+        optimize_short = self._confirm(
+            "Optimize parameters for short sequences?",
+            default=True
+        )
+
         # Create benchmark configuration
         config = BenchmarkConfig(
             epochs=epochs,
@@ -302,13 +334,27 @@ class TrainingCLI:
             balance_benchmark_classes=balance,
             test_split_size=0.2,
             save_benchmark_csv=True,
-            track_languages=True
+            track_languages=True,
+            use_reinforced_in_benchmark=use_reinforced,
+            reinforced_learning=use_reinforced,
+            reinforced_epochs=5 if use_reinforced else 0,
+            reinforced_f1_threshold=0.60,
+            rescue_low_class1_f1=use_reinforced,
+            f1_rescue_threshold=0.01,
+            optimize_for_short_sequences=optimize_short,
+            short_sequence_threshold=100,
+            large_model_adjustments=True
         )
+
+        # Create training config with benchmark options
+        training_config = TrainingConfig(output_dir=str(self.models_dir))
+        training_config.use_reinforced_in_benchmark = use_reinforced
+        training_config.optimize_for_short_sequences = optimize_short
 
         # Run benchmark with selected models
         selected = self._run_benchmark(
             data_file=data_file,
-            config=TrainingConfig(output_dir=str(self.models_dir)),
+            config=training_config,
             benchmark_epochs=epochs,
             test_all=test_all,
             allow_selection=True,
