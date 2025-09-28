@@ -726,10 +726,21 @@ class TrainingCLI:
 
         print(f"📋 Summary saved to: {json_file}")
 
-    def _confirm(self, prompt: str) -> bool:
+    def _confirm(self, prompt: str, default: bool = True) -> bool:
         """Get yes/no confirmation."""
-        response = input(prompt + " [Y/n]: ").strip().lower()
-        return response in ['', 'y', 'yes']
+        if default:
+            suffix = " [Y/n]: "
+            default_responses = ['', 'y', 'yes']
+        else:
+            suffix = " [y/N]: "
+            default_responses = ['', 'n', 'no']
+
+        response = input(prompt + suffix).strip().lower()
+
+        if default:
+            return response in ['', 'y', 'yes']
+        else:
+            return response not in ['', 'n', 'no']
 
     def _get_integer(self, prompt: str, default: int, min_val: int = 1, max_val: int = 100) -> int:
         """Get integer input with validation."""
