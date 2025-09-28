@@ -109,6 +109,13 @@ class BenchmarkConfig:
     test_split_size: float = 0.2
     min_samples_per_class: int = 10
     save_benchmark_csv: bool = True
+    # Benchmark-specific reinforced learning
+    use_reinforced_in_benchmark: bool = False  # Allow reinforced learning during benchmark
+    reinforced_f1_threshold: float = 0.60  # Trigger reinforced if F1_1 < this value
+    # Short sequence optimization for large models
+    optimize_for_short_sequences: bool = False  # Adjust params for short texts
+    short_sequence_threshold: int = 100  # Consider sequences < this as short
+    large_model_adjustments: bool = True  # Apply special settings for large models
     backbone_map: Dict[str, str] = field(default_factory=lambda: {
         "FR": "camembert-base",
         "EN": "bert-base-cased",
@@ -776,7 +783,14 @@ class BenchmarkRunner:
         if allow_user_selection:
             return self._user_select_model(results)
         else:
-            return results[0]['model_name'] if results else None
+            # Select best model considering all languages if multilingual
+            if is_multilingual and results:
+                best_model = self._select_best_multilingual_model(results, detected_languages)
+                if verbose:
+                    print(f"\n✅ Best model selected (considering all languages): {best_model}")
+                return best_model
+            else:
+                return results[0]['model_name'] if results else None
 
     def _select_models_for_benchmark(
         self,
@@ -955,37 +969,103 @@ class BenchmarkRunner:
                 # Initialize model
                 model = model_class()
 
-                # Create data loaders
+                # Check if this is a problematic model that needs special handling
+                problematic_models = ['LongformerBase', 'LongformerLarge', 'BigBirdBase', 'BigBirdLarge',
+                                    'ALBERTLarge', 'ALBERTXLarge', 'RoBERTaLarge', 'ELECTRALarge']
+                needs_adjustment = model_name in problematic_models
+
+                # Calculate average sequence length if needed
+                avg_seq_length = 0
+                if self.config.optimize_for_short_sequences and needs_adjustment:
+                    avg_seq_length = np.mean([len(t.split()) for t in filtered_train_texts[:100]]) * 1.3  # Approx tokens
+                    if verbose:
+                        print(f"   📏 Avg sequence length: ~{avg_seq_length:.0f} tokens")
+
+                # Adjust parameters for problematic models with short sequences
+                adjusted_batch_size = self.config.batch_size
+                adjusted_lr = self.config.learning_rate
+                adjusted_epochs = benchmark_epochs
+
+                if needs_adjustment and self.config.large_model_adjustments:
+                    if avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
+                        # Short sequences detected - adjust parameters
+                        if 'Longformer' in model_name or 'BigBird' in model_name:
+                            # These models expect long sequences, reduce batch size and increase LR
+                            adjusted_batch_size = max(4, self.config.batch_size // 4)  # Much smaller batch
+                            adjusted_lr = self.config.learning_rate * 2  # Higher LR for faster convergence
+                            adjusted_epochs = min(benchmark_epochs * 2, 10)  # More epochs
+                            if verbose:
+                                print(f"   ⚙️ Adjusting for long-context model with short texts:")
+                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
+                        elif 'ALBERT' in model_name:
+                            # ALBERT needs more epochs due to parameter sharing
+                            adjusted_epochs = min(benchmark_epochs * 2, 15)
+                            adjusted_lr = self.config.learning_rate * 0.5  # Lower LR for stability
+                            if verbose:
+                                print(f"   ⚙️ Adjusting for ALBERT (parameter sharing):")
+                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
+                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                        elif 'Large' in model_name:
+                            # Large models need lower LR to avoid overfitting on short sequences
+                            adjusted_lr = self.config.learning_rate * 0.3
+                            adjusted_batch_size = max(8, self.config.batch_size // 2)
+                            if verbose:
+                                print(f"   ⚙️ Adjusting for Large model with short texts:")
+                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+
+                # Create data loaders with adjusted batch size
                 train_loader = model.encode(
                     filtered_train_texts,
                     filtered_train_labels,
-                    batch_size=self.config.batch_size,
+                    batch_size=adjusted_batch_size,
                     progress_bar=False
                 )
                 test_loader = model.encode(
                     filtered_test_texts,
                     filtered_test_labels,
-                    batch_size=self.config.batch_size,
+                    batch_size=adjusted_batch_size,
                     progress_bar=False
                 )
 
                 # Run training
                 import time
+                import numpy as np
                 start_time = time.time()
+
+                # Decide whether to use reinforced learning based on config
+                use_reinforced = self.config.use_reinforced_in_benchmark and self.config.reinforced_learning
+
+                # Force reinforced for problematic models
+                if needs_adjustment and avg_seq_length < self.config.short_sequence_threshold:
+                    use_reinforced = True
+                    if verbose:
+                        print(f"   ⚡ Forcing reinforced learning for problematic model")
 
                 summary = model.run_training(
                     train_dataloader=train_loader,
                     test_dataloader=test_loader,
-                    n_epochs=benchmark_epochs,
-                    lr=self.config.learning_rate,
+                    n_epochs=adjusted_epochs,
+                    lr=adjusted_lr,
                     save_model_as=f"benchmark_{model_name.lower()}",
                     track_languages=self.config.track_languages and filtered_test_languages is not None,
                     language_info=filtered_test_languages if filtered_test_languages else None,
-                    reinforced_learning=False,  # Disable for benchmark
+                    reinforced_learning=use_reinforced,
+                    n_epochs_reinforced=self.config.reinforced_epochs if use_reinforced else 0,
+                    f1_class_1_weight=self.config.f1_class_1_weight,
+                    rescue_low_class1_f1=self.config.rescue_low_class1_f1,
+                    f1_1_rescue_threshold=self.config.f1_rescue_threshold,
                     model_identifier=f"benchmark_{model_name.lower()}"
                 )
 
                 training_time = time.time() - start_time
+
+                # Log if reinforced learning was triggered
+                if use_reinforced and summary.get('reinforced_triggered', False):
+                    if verbose:
+                        print(f"   ⚡ Reinforced learning was triggered (F1_1 < {self.config.reinforced_f1_threshold})")
 
                 # Clean up model
                 if hasattr(model, 'last_saved_model_path') and model.last_saved_model_path:
@@ -1096,6 +1176,66 @@ class BenchmarkRunner:
         # Fastest
         fastest = min(results, key=lambda x: x.get('inference_time', float('inf')))
         print(f"   ⚡ Fastest: {fastest['model_name']} ({fastest['inference_time']*1000:.1f} ms/sample)")
+
+    def _select_best_multilingual_model(self, results: List[Dict], languages: List[str]) -> str:
+        """
+        Select best model considering performance across all languages.
+
+        For multilingual data, we calculate a weighted score based on:
+        - Overall F1 macro across all languages
+        - Minimum F1_1 across languages (to avoid models that fail in one language)
+        - Balance between languages
+        """
+        best_score = -1
+        best_model = None
+
+        for result in results:
+            # Calculate composite score
+            overall_f1 = result.get('f1_score', 0)
+            overall_f1_class1 = result.get('f1_class_1', 0)
+
+            # Get language-specific metrics
+            lang_metrics = result.get('language_metrics', {})
+
+            if lang_metrics:
+                # Calculate minimum and average F1_1 across languages
+                f1_1_scores = []
+                f1_macro_scores = []
+
+                for lang in languages:
+                    if lang in lang_metrics:
+                        lang_data = lang_metrics[lang]
+                        f1_1_scores.append(lang_data.get('f1_1', 0))
+                        f1_macro_scores.append(lang_data.get('macro_f1', 0))
+
+                if f1_1_scores:
+                    min_f1_1 = min(f1_1_scores)
+                    avg_f1_1 = sum(f1_1_scores) / len(f1_1_scores)
+                    avg_f1_macro = sum(f1_macro_scores) / len(f1_macro_scores)
+
+                    # Composite score:
+                    # - 40% overall F1 macro
+                    # - 30% minimum F1_1 across languages (penalize if one language fails)
+                    # - 20% average F1_1 across languages
+                    # - 10% overall F1_1
+                    composite_score = (
+                        0.4 * avg_f1_macro +
+                        0.3 * min_f1_1 +
+                        0.2 * avg_f1_1 +
+                        0.1 * overall_f1_class1
+                    )
+                else:
+                    # Fallback to overall metrics
+                    composite_score = 0.7 * overall_f1 + 0.3 * overall_f1_class1
+            else:
+                # No language metrics, use overall
+                composite_score = 0.7 * overall_f1 + 0.3 * overall_f1_class1
+
+            if composite_score > best_score:
+                best_score = composite_score
+                best_model = result['model_name']
+
+        return best_model if best_model else (results[0]['model_name'] if results else None)
 
     def _user_select_model(self, results: List[Dict]) -> Optional[str]:
         """Let user select model from results."""
