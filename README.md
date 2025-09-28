@@ -714,7 +714,9 @@ from AugmentedSocialScientistFork import BenchmarkRunner, BenchmarkConfig
 config = BenchmarkConfig(
     epochs=3,
     save_benchmark_csv=True,
-    track_languages=True
+    track_languages=True,
+    use_reinforced_in_benchmark=True,  # enable reinforced for poor performers
+    optimize_for_short_sequences=True  # auto-adjust for short texts
 )
 
 runner = BenchmarkRunner(
@@ -732,6 +734,12 @@ best_model = runner.run_comprehensive_benchmark(
 )
 ```
 
+the benchmark automatically:
+- detects average sequence length in your data
+- adjusts hyperparameters for models designed for long documents when encountering short texts
+- selects the best model considering performance across all languages
+- applies reinforced learning for models with poor minority class detection
+
 output files include:
 
 **per‑execution files (timestamped):**
@@ -742,6 +750,10 @@ output files include:
 **consolidated files (accumulate all runs):**
 - `benchmark_all_runs_consolidated.csv`: ALL metrics from ALL benchmark executions across time
 - `benchmark_best_models_consolidated.csv`: best models from ALL benchmark sessions
+
+the benchmark results include language‑specific metrics (EN_f1_1, FR_f1_1, etc.) enabling proper
+evaluation of multilingual performance. model selection considers performance balance across all
+languages to avoid models that fail in one language while performing well in another.
 
 the consolidated files append new results without overwriting, providing a complete history of all benchmarking sessions. this enables:
 - tracking model performance evolution over time
