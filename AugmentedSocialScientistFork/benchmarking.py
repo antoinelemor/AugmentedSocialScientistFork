@@ -393,6 +393,7 @@ class BenchmarkRunner:
             reinforced_epochs=self.config.reinforced_epochs,
             rescue_low_class1_f1=self.config.rescue_low_class1_f1,
             f1_1_rescue_threshold=self.config.f1_rescue_threshold,
+            reinforced_f1_threshold=self.config.reinforced_f1_threshold,
             track_languages=self.config.track_languages,
             language_info=test_languages,
             model_identifier=f"{cat_name}_{language}_{model.__class__.__name__}" if self.config.track_languages and test_languages else None,
@@ -971,7 +972,8 @@ class BenchmarkRunner:
 
                 # Check if this is a problematic model that needs special handling
                 problematic_models = ['LongformerBase', 'LongformerLarge', 'BigBirdBase', 'BigBirdLarge',
-                                    'ALBERTLarge', 'ALBERTXLarge', 'RoBERTaLarge', 'ELECTRALarge']
+                                    'ALBERTLarge', 'ALBERTXLarge', 'RoBERTaLarge', 'ELECTRALarge',
+                                    'XLMRobertaLarge', 'XLMRobertaBase', 'DeBERTaV3Large']
                 needs_adjustment = model_name in problematic_models
 
                 # Calculate average sequence length if needed
@@ -993,7 +995,7 @@ class BenchmarkRunner:
                             # These models expect long sequences, reduce batch size and increase LR
                             adjusted_batch_size = max(4, self.config.batch_size // 4)  # Much smaller batch
                             adjusted_lr = self.config.learning_rate * 2  # Higher LR for faster convergence
-                            adjusted_epochs = min(benchmark_epochs * 2, 10)  # More epochs
+                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for convergence
                             if verbose:
                                 print(f"   ⚙️ Adjusting for long-context model with short texts:")
                                 print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
@@ -1001,12 +1003,32 @@ class BenchmarkRunner:
                                 print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
                         elif 'ALBERT' in model_name:
                             # ALBERT needs more epochs due to parameter sharing
-                            adjusted_epochs = min(benchmark_epochs * 2, 15)
+                            adjusted_epochs = benchmark_epochs * 2  # Double epochs due to parameter sharing
                             adjusted_lr = self.config.learning_rate * 0.5  # Lower LR for stability
                             if verbose:
                                 print(f"   ⚙️ Adjusting for ALBERT (parameter sharing):")
                                 print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
                                 print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                        elif 'XLMRoberta' in model_name:
+                            # XLM-RoBERTa needs special handling for short sequences
+                            adjusted_batch_size = max(4, self.config.batch_size // 4)
+                            adjusted_lr = self.config.learning_rate * 2.0
+                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for multilingual convergence
+                            if verbose:
+                                print(f"   ⚙️ Adjusting XLM-RoBERTa for short texts:")
+                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
+                        elif 'DeBERTaV3Large' in model_name:
+                            # DeBERTa v3 Large needs aggressive adjustments
+                            adjusted_batch_size = max(4, self.config.batch_size // 4)
+                            adjusted_lr = self.config.learning_rate * 1.5
+                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for large model convergence
+                            if verbose:
+                                print(f"   ⚙️ Adjusting DeBERTa-v3-Large for short texts:")
+                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
+                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
                         elif 'Large' in model_name:
                             # Large models need lower LR to avoid overfitting on short sequences
                             adjusted_lr = self.config.learning_rate * 0.3
@@ -1057,6 +1079,7 @@ class BenchmarkRunner:
                     f1_class_1_weight=self.config.f1_class_1_weight,
                     rescue_low_class1_f1=self.config.rescue_low_class1_f1,
                     f1_1_rescue_threshold=self.config.f1_rescue_threshold,
+                    reinforced_f1_threshold=self.config.reinforced_f1_threshold,
                     model_identifier=f"benchmark_{model_name.lower()}"
                 )
 

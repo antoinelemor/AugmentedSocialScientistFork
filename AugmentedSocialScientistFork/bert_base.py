@@ -249,12 +249,13 @@ class BertBase(BertABC):
             track_languages: bool = False,
             language_info: Optional[List[str]] = None,
             f1_1_rescue_threshold: float = 0.0,
-            model_identifier: Optional[str] = None
+            model_identifier: Optional[str] = None,
+            reinforced_f1_threshold: float = 0.7  # Nouveau paramètre pour le seuil de déclenchement
     ) -> Tuple[Any, Any, Any, Any]:
         """
         Train, evaluate, and (optionally) save a BERT model. This method also logs training and validation
         metrics per epoch, handles best-model selection, and can optionally trigger reinforced learning if
-        the best F1 on class 1 is below 0.7 at the end of normal training.
+        the best F1 on class 1 is below the reinforced_f1_threshold at the end of normal training.
 
         This method can also (optionally) apply a "rescue" logic for class 1 F1 scores that remain at 0
         after normal training: if ``rescue_low_class1_f1=True`` and the best model's F1 for class 1 is 0,
@@ -1030,10 +1031,11 @@ class BertBase(BertABC):
         # ==================== Reinforced Training Check ====================
         if best_scores is not None:
             best_f1_1 = best_scores[2][1]  # best_scores = (precision, recall, f1, support)
-            if best_f1_1 < 0.7 and reinforced_learning:
+            if best_f1_1 < reinforced_f1_threshold and reinforced_learning:
                 self.logger.warning(
-                    "The best model's F1 score for class 1 (%.3f) is below 0.70. Triggering reinforced training...",
+                    "The best model's F1 score for class 1 (%.3f) is below %.2f. Triggering reinforced training...",
                     best_f1_1,
+                    reinforced_f1_threshold,
                 )
 
                 # Perform reinforced training
