@@ -1029,9 +1029,11 @@ class BertBase(BertABC):
             self.logger.info("Current model saved as fallback at: %s", best_model_path)
 
         # ==================== Reinforced Training Check ====================
+        reinforced_triggered = False
         if best_scores is not None:
             best_f1_1 = best_scores[2][1]  # best_scores = (precision, recall, f1, support)
             if best_f1_1 < reinforced_f1_threshold and reinforced_learning:
+                reinforced_triggered = True
                 self.logger.warning(
                     "The best model's F1 score for class 1 (%.3f) is below %.2f. Triggering reinforced training...",
                     best_f1_1,
@@ -1089,7 +1091,8 @@ class BertBase(BertABC):
                 'recall_0': best_scores[1][0] if len(best_scores[1]) > 0 else 0,
                 'recall_1': best_scores[1][1] if len(best_scores[1]) > 1 else 0,
                 'val_loss': val_loss_values[-1] if val_loss_values else 0,
-                'best_model_path': best_model_path
+                'best_model_path': best_model_path,
+                'reinforced_triggered': reinforced_triggered
             }
 
             # Add language metrics if available
