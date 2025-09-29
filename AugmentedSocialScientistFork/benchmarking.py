@@ -970,11 +970,18 @@ class BenchmarkRunner:
                 # Initialize model
                 model = model_class()
 
-                # Check if this is a problematic model that needs special handling
-                problematic_models = ['LongformerBase', 'LongformerLarge', 'BigBirdBase', 'BigBirdLarge',
-                                    'ALBERTLarge', 'ALBERTXLarge', 'RoBERTaLarge', 'ELECTRALarge',
-                                    'XLMRobertaLarge', 'XLMRobertaBase', 'DeBERTaV3Large']
-                needs_adjustment = model_name in problematic_models
+                # Determine if model needs adjustment based on its characteristics
+                # Large models or models designed for long sequences often struggle with short texts
+                needs_adjustment = (
+                    'Large' in model_name or
+                    'large' in model_name.lower() or
+                    'XLarge' in model_name or
+                    'Longformer' in model_name or
+                    'BigBird' in model_name or
+                    # Models with specific architectures that need more training
+                    'ALBERT' in model_name or  # Parameter sharing requires more epochs
+                    'XLM' in model_name  # Multilingual models need more adaptation
+                )
 
                 # Calculate average sequence length (always calculate for problematic models)
                 avg_seq_length = 0
@@ -995,54 +1002,79 @@ class BenchmarkRunner:
                 adjusted_epochs = benchmark_epochs
 
                 if needs_adjustment and self.config.large_model_adjustments:
-                    if avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
-                        # Short sequences detected - adjust parameters
-                        if 'Longformer' in model_name or 'BigBird' in model_name:
-                            # These models expect long sequences, reduce batch size and increase LR
-                            adjusted_batch_size = max(4, self.config.batch_size // 4)  # Much smaller batch
-                            adjusted_lr = self.config.learning_rate * 2  # Higher LR for faster convergence
-                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for convergence
-                            if verbose:
-                                print(f"   ⚙️ Adjusting for long-context model with short texts:")
-                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
-                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
-                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
-                        elif 'ALBERT' in model_name:
-                            # ALBERT needs more epochs due to parameter sharing
-                            adjusted_epochs = benchmark_epochs * 2  # Double epochs due to parameter sharing
-                            adjusted_lr = self.config.learning_rate * 0.5  # Lower LR for stability
-                            if verbose:
-                                print(f"   ⚙️ Adjusting for ALBERT (parameter sharing):")
-                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
-                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
-                        elif 'XLMRoberta' in model_name:
-                            # XLM-RoBERTa needs special handling for short sequences
+                    # SMART PARAMETER ADJUSTMENT BASED ON MODEL CHARACTERISTICS
+
+                    # Determine adjustment strategy based on model type and sequence length
+                    is_short_seq = avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold
+                    is_long_context_model = 'Longformer' in model_name or 'BigBird' in model_name
+                    is_parameter_sharing = 'ALBERT' in model_name
+                    is_multilingual = 'XLM' in model_name or 'mDeBERTa' in model_name
+                    is_large_model = 'Large' in model_name or 'large' in model_name.lower()
+
+                    # Apply adjustments based on characteristics
+                    if is_short_seq:
+                        # Short sequences require specific adjustments
+                        if is_long_context_model:
+                            # Long-context models struggle with short sequences
                             adjusted_batch_size = max(4, self.config.batch_size // 4)
                             adjusted_lr = self.config.learning_rate * 2.0
-                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for multilingual convergence
-                            if verbose:
-                                print(f"   ⚙️ Adjusting XLM-RoBERTa for short texts:")
-                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
-                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
-                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
-                        elif 'DeBERTaV3Large' in model_name:
-                            # DeBERTa v3 Large needs aggressive adjustments
+                            adjusted_epochs = benchmark_epochs * 2
+                            adjustment_reason = "long-context model with short sequences"
+                        elif is_multilingual:
+                            # Multilingual models need aggressive adjustments for short sequences
                             adjusted_batch_size = max(4, self.config.batch_size // 4)
-                            adjusted_lr = self.config.learning_rate * 1.5
-                            adjusted_epochs = benchmark_epochs * 2  # Double epochs for large model convergence
-                            if verbose:
-                                print(f"   ⚙️ Adjusting DeBERTa-v3-Large for short texts:")
-                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
-                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
-                                print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
-                        elif 'Large' in model_name:
-                            # Large models need lower LR to avoid overfitting on short sequences
-                            adjusted_lr = self.config.learning_rate * 0.3
+                            adjusted_lr = self.config.learning_rate * 2.0
+                            adjusted_epochs = benchmark_epochs * 2
+                            adjustment_reason = "multilingual model with short sequences"
+                        elif is_large_model:
+                            # Large models tend to overfit on short sequences
                             adjusted_batch_size = max(8, self.config.batch_size // 2)
-                            if verbose:
-                                print(f"   ⚙️ Adjusting for Large model with short texts:")
-                                print(f"      LR: {self.config.learning_rate} → {adjusted_lr}")
-                                print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+                            adjusted_lr = self.config.learning_rate * 0.3
+                            adjusted_epochs = benchmark_epochs * 1.5
+                            adjustment_reason = "large model with short sequences"
+                        else:
+                            # Generic adjustment for short sequences
+                            adjusted_batch_size = max(8, self.config.batch_size // 2)
+                            adjusted_lr = self.config.learning_rate * 1.2
+                            adjusted_epochs = benchmark_epochs * 1.5
+                            adjustment_reason = "model with short sequences"
+                    else:
+                        # Normal sequences but model still needs help
+                        if is_parameter_sharing:
+                            # ALBERT needs more epochs due to parameter sharing
+                            adjusted_epochs = benchmark_epochs * 2
+                            adjusted_lr = self.config.learning_rate * 0.5
+                            adjustment_reason = "parameter sharing architecture"
+                        elif is_multilingual:
+                            # Multilingual models need more training
+                            adjusted_epochs = benchmark_epochs * 1.5
+                            adjusted_lr = self.config.learning_rate * 1.2
+                            adjustment_reason = "multilingual model"
+                        elif is_large_model:
+                            # Large models need careful tuning
+                            adjusted_batch_size = max(8, self.config.batch_size // 2)
+                            adjusted_lr = self.config.learning_rate * 0.5
+                            adjusted_epochs = benchmark_epochs * 1.5
+                            adjustment_reason = "large model architecture"
+                        else:
+                            # Default adjustment for models that need help
+                            adjusted_epochs = benchmark_epochs * 1.5
+                            adjusted_lr = self.config.learning_rate * 0.8
+                            adjustment_reason = "model needs extra support"
+
+                    # Ensure epochs is an integer
+                    adjusted_epochs = int(adjusted_epochs)
+
+                    if verbose and (adjusted_batch_size != self.config.batch_size or
+                                   adjusted_lr != self.config.learning_rate or
+                                   adjusted_epochs != benchmark_epochs):
+                        print(f"   ⚙️ Auto-adjusting parameters ({adjustment_reason}):")
+                        if adjusted_batch_size != self.config.batch_size:
+                            print(f"      Batch: {self.config.batch_size} → {adjusted_batch_size}")
+                        if adjusted_lr != self.config.learning_rate:
+                            print(f"      LR: {self.config.learning_rate:.2e} → {adjusted_lr:.2e}")
+                        if adjusted_epochs != benchmark_epochs:
+                            print(f"      Epochs: {benchmark_epochs} → {adjusted_epochs}")
 
                 # Create data loaders with adjusted batch size
                 train_loader = model.encode(
@@ -1063,20 +1095,24 @@ class BenchmarkRunner:
                 import numpy as np
                 start_time = time.time()
 
-                # Decide whether to use reinforced learning based on config
+                # Decide whether to use reinforced learning
+                # Base decision on configuration
                 use_reinforced = self.config.use_reinforced_in_benchmark and self.config.reinforced_learning
 
-                # Force reinforced for problematic models with short sequences
+                # AUTOMATIC REINFORCED LEARNING TRIGGERS
+                # 1. Models that need adjustment AND have short sequences
                 if needs_adjustment and avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
-                    use_reinforced = True
-                    if verbose:
-                        print(f"   ⚡ Forcing reinforced learning for problematic model with short sequences")
+                    if self.config.reinforced_learning:  # Only if reinforced is enabled in config
+                        use_reinforced = True
+                        if verbose:
+                            print(f"   ⚡ Auto-enabling reinforced learning: Large/complex model with short sequences (~{avg_seq_length:.0f} tokens)")
 
-                # Also force reinforced for specific models that are known to have issues
-                if model_name in ['XLMRobertaLarge', 'XLMRobertaBase', 'DeBERTaV3Large'] and self.config.reinforced_learning:
+                # 2. Force reinforced for ALL models that need adjustment (they often have convergence issues)
+                # This ensures that any model identified as needing help gets it
+                elif needs_adjustment and self.config.reinforced_learning:
                     use_reinforced = True
                     if verbose:
-                        print(f"   ⚡ Forcing reinforced learning for {model_name} (known convergence issues)")
+                        print(f"   ⚡ Auto-enabling reinforced learning: Model architecture needs extra training support")
 
                 summary = model.run_training(
                     train_dataloader=train_loader,
