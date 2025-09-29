@@ -976,9 +976,15 @@ class BenchmarkRunner:
                                     'XLMRobertaLarge', 'XLMRobertaBase', 'DeBERTaV3Large']
                 needs_adjustment = model_name in problematic_models
 
-                # Calculate average sequence length if needed
+                # Calculate average sequence length (always calculate for problematic models)
                 avg_seq_length = 0
-                if self.config.optimize_for_short_sequences and needs_adjustment:
+                if needs_adjustment:
+                    # Always calculate for problematic models
+                    avg_seq_length = np.mean([len(t.split()) for t in filtered_train_texts[:100]]) * 1.3  # Approx tokens
+                    if verbose:
+                        print(f"   📏 Avg sequence length: ~{avg_seq_length:.0f} tokens")
+                elif self.config.optimize_for_short_sequences:
+                    # Also calculate if optimization is requested
                     avg_seq_length = np.mean([len(t.split()) for t in filtered_train_texts[:100]]) * 1.3  # Approx tokens
                     if verbose:
                         print(f"   📏 Avg sequence length: ~{avg_seq_length:.0f} tokens")
@@ -1060,11 +1066,17 @@ class BenchmarkRunner:
                 # Decide whether to use reinforced learning based on config
                 use_reinforced = self.config.use_reinforced_in_benchmark and self.config.reinforced_learning
 
-                # Force reinforced for problematic models
-                if needs_adjustment and avg_seq_length < self.config.short_sequence_threshold:
+                # Force reinforced for problematic models with short sequences
+                if needs_adjustment and avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
                     use_reinforced = True
                     if verbose:
-                        print(f"   ⚡ Forcing reinforced learning for problematic model")
+                        print(f"   ⚡ Forcing reinforced learning for problematic model with short sequences")
+
+                # Also force reinforced for specific models that are known to have issues
+                if model_name in ['XLMRobertaLarge', 'XLMRobertaBase', 'DeBERTaV3Large'] and self.config.reinforced_learning:
+                    use_reinforced = True
+                    if verbose:
+                        print(f"   ⚡ Forcing reinforced learning for {model_name} (known convergence issues)")
 
                 summary = model.run_training(
                     train_dataloader=train_loader,
