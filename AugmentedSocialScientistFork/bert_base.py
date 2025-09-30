@@ -1087,7 +1087,9 @@ class BertBase(BertABC):
                     rescue_low_class1_f1=rescue_low_class1_f1,
                     f1_1_rescue_threshold=f1_1_rescue_threshold,
                     prev_best_f1_1=best_f1_1,  # Pass the F1_1 for adaptive parameters
-                    original_lr=lr  # Pass original LR
+                    original_lr=lr,  # Pass original LR
+                    track_languages=track_languages,
+                    language_info=language_info
                 )
             else:
                 self.logger.info("No reinforced training triggered.")
@@ -1154,7 +1156,9 @@ class BertBase(BertABC):
             rescue_low_class1_f1: bool = False,
             f1_1_rescue_threshold: float = 0.0,
             prev_best_f1_1: float = 0.0,
-            original_lr: float = 5e-5
+            original_lr: float = 5e-5,
+            track_languages: bool = False,
+            language_info: Optional[List[str]] = None
     ) -> Tuple[float, str | None, Tuple[Any, Any, Any, Any] | None]:
         """
         A "reinforced training" procedure that is triggered if the final best model from normal
@@ -1688,6 +1692,16 @@ class BertBase(BertABC):
                         writer.writerow(row)
 
                 best_scores = precision_recall_fscore_support(eval_labels, val_preds)
+        else:
+            # Even if we didn't find a better model, calculate the final scores
+            # Use the last evaluation results
+            if 'val_preds' in locals() and 'eval_labels' in locals():
+                best_scores = precision_recall_fscore_support(eval_labels, val_preds)
+            else:
+                # If no evaluation was done, keep the scores from normal training
+                # (passed as prev_best_f1_1 but we need the full scores)
+                # This shouldn't happen in normal circumstances
+                best_scores = None
 
         # After finishing the reinforced epochs, if we have found a better model, rename it to final
         if best_model_path_local and (best_model_path_local != base_model_path):
