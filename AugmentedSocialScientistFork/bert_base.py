@@ -1032,6 +1032,8 @@ class BertBase(BertABC):
         reinforced_triggered = False
         if best_scores is not None:
             best_f1_1 = best_scores[2][1]  # best_scores = (precision, recall, f1, support)
+            # Debug logging
+            self.logger.info(f"Reinforced check: best_f1_1={best_f1_1:.3f}, threshold={reinforced_f1_threshold:.3f}, reinforced_learning={reinforced_learning}")
             if best_f1_1 < reinforced_f1_threshold and reinforced_learning:
                 reinforced_triggered = True
                 self.logger.warning(

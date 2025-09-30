@@ -1096,23 +1096,23 @@ class BenchmarkRunner:
                 start_time = time.time()
 
                 # Decide whether to use reinforced learning
-                # Base decision on configuration
-                use_reinforced = self.config.use_reinforced_in_benchmark and self.config.reinforced_learning
+                # Pass reinforced_learning if it's enabled in config
+                # This allows bert_base.py to automatically trigger if F1_1 < threshold
+                use_reinforced = self.config.reinforced_learning
 
-                # AUTOMATIC REINFORCED LEARNING TRIGGERS
-                # 1. Models that need adjustment AND have short sequences
-                if needs_adjustment and avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
-                    if self.config.reinforced_learning:  # Only if reinforced is enabled in config
-                        use_reinforced = True
-                        if verbose:
-                            print(f"   ⚡ Auto-enabling reinforced learning: Large/complex model with short sequences (~{avg_seq_length:.0f} tokens)")
+                # Log reinforced status for transparency
+                if verbose:
+                    if use_reinforced:
+                        print(f"   ⚡ Reinforced learning enabled (will auto-trigger if F1_1 < {self.config.reinforced_f1_threshold:.2f})")
 
-                # 2. Force reinforced for ALL models that need adjustment (they often have convergence issues)
-                # This ensures that any model identified as needing help gets it
-                elif needs_adjustment and self.config.reinforced_learning:
-                    use_reinforced = True
-                    if verbose:
-                        print(f"   ⚡ Auto-enabling reinforced learning: Model architecture needs extra training support")
+                        # Additional context for models likely to need it
+                        if needs_adjustment:
+                            if avg_seq_length > 0 and avg_seq_length < self.config.short_sequence_threshold:
+                                print(f"      Note: Model has short sequences (~{avg_seq_length:.0f} tokens) - reinforced likely needed")
+                            else:
+                                print(f"      Note: Model architecture often benefits from reinforced training")
+                    else:
+                        print(f"   ℹ️ Reinforced learning disabled (activate in config to enable auto-triggering)")
 
                 summary = model.run_training(
                     train_dataloader=train_loader,
