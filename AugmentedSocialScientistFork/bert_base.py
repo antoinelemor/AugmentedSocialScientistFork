@@ -1089,7 +1089,8 @@ class BertBase(BertABC):
                     prev_best_f1_1=best_f1_1,  # Pass the F1_1 for adaptive parameters
                     original_lr=lr,  # Pass original LR
                     track_languages=track_languages,
-                    language_info=language_info
+                    language_info=language_info,
+                    model_identifier=model_identifier  # Pass model_identifier for CSV logging
                 )
             else:
                 self.logger.info("No reinforced training triggered.")
@@ -1158,7 +1159,8 @@ class BertBase(BertABC):
             prev_best_f1_1: float = 0.0,
             original_lr: float = 5e-5,
             track_languages: bool = False,
-            language_info: Optional[List[str]] = None
+            language_info: Optional[List[str]] = None,
+            model_identifier: Optional[str] = None
     ) -> Tuple[float, str | None, Tuple[Any, Any, Any, Any] | None]:
         """
         A "reinforced training" procedure that is triggered if the final best model from normal
