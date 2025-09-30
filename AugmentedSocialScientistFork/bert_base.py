@@ -1029,12 +1029,39 @@ class BertBase(BertABC):
             self.logger.info("Current model saved as fallback at: %s", best_model_path)
 
         # ==================== Reinforced Training Check ====================
+        print("\n" + "="*80)
+        print("REINFORCED TRAINING CHECK")
+        print("="*80)
+
+        self.logger.info("="*80)
+        self.logger.info("REINFORCED TRAINING CHECK")
+        self.logger.info("="*80)
+
         reinforced_triggered = False
         if best_scores is not None:
             best_f1_1 = best_scores[2][1]  # best_scores = (precision, recall, f1, support)
-            # Debug logging
-            self.logger.info(f"Reinforced check: best_f1_1={best_f1_1:.3f}, threshold={reinforced_f1_threshold:.3f}, reinforced_learning={reinforced_learning}")
-            if best_f1_1 < reinforced_f1_threshold and reinforced_learning:
+
+            # Debug avec PRINT pour être sûr de voir
+            print(f"🔍 Reinforced check:")
+            print(f"   - Model: {self.__class__.__name__}")
+            print(f"   - F1_1: {best_f1_1:.3f}")
+            print(f"   - Threshold: {reinforced_f1_threshold:.3f}")
+            print(f"   - reinforced_learning: {reinforced_learning}")
+            print(f"   - n_epochs_reinforced: {n_epochs_reinforced}")
+            print(f"   - Will trigger? {best_f1_1 < reinforced_f1_threshold and reinforced_learning and n_epochs_reinforced > 0}")
+
+            # Debug logging aussi
+            self.logger.info(f"🔍 Reinforced check: F1_1={best_f1_1:.3f} vs threshold={reinforced_f1_threshold:.3f}")
+            self.logger.info(f"   - reinforced_learning enabled: {reinforced_learning}")
+            self.logger.info(f"   - n_epochs_reinforced: {n_epochs_reinforced}")
+
+            if not reinforced_learning:
+                print("⚠️ Reinforced learning DÉSACTIVÉ")
+                self.logger.warning("⚠️ Reinforced learning DÉSACTIVÉ - ne se déclenchera pas même si F1_1 < seuil")
+            elif n_epochs_reinforced == 0:
+                print("⚠️ n_epochs_reinforced = 0")
+                self.logger.warning("⚠️ n_epochs_reinforced = 0 - pas d'époques de reinforced configurées!")
+            elif best_f1_1 < reinforced_f1_threshold and reinforced_learning and n_epochs_reinforced > 0:
                 reinforced_triggered = True
                 self.logger.warning(
                     "The best model's F1 score for class 1 (%.3f) is below %.2f. Triggering reinforced training...",
@@ -1058,7 +1085,9 @@ class BertBase(BertABC):
                     previous_best_metric=best_metric_val,
                     n_epochs_reinforced=n_epochs_reinforced,
                     rescue_low_class1_f1=rescue_low_class1_f1,
-                    f1_1_rescue_threshold=f1_1_rescue_threshold
+                    f1_1_rescue_threshold=f1_1_rescue_threshold,
+                    prev_best_f1_1=best_f1_1,  # Pass the F1_1 for adaptive parameters
+                    original_lr=lr  # Pass original LR
                 )
             else:
                 self.logger.info("No reinforced training triggered.")
@@ -1123,7 +1152,9 @@ class BertBase(BertABC):
             previous_best_metric: float = -1.0,
             n_epochs_reinforced: int = 2,
             rescue_low_class1_f1: bool = False,
-            f1_1_rescue_threshold: float = 0.0
+            f1_1_rescue_threshold: float = 0.0,
+            prev_best_f1_1: float = 0.0,
+            original_lr: float = 5e-5
     ) -> Tuple[float, str | None, Tuple[Any, Any, Any, Any] | None]:
         """
         A "reinforced training" procedure that is triggered if the final best model from normal
@@ -1257,12 +1288,32 @@ class BertBase(BertABC):
             batch_size=new_batch_size
         )
 
-        # Lower learning rate by factor of 10 (example)
-        new_lr = 5e-6
+        # Get intelligent reinforced parameters based on model and performance
+        from .reinforced_params import get_reinforced_params, should_use_advanced_techniques
 
-        # Weighted cross-entropy for binary classes: weight for class 1
-        pos_weight_val = 2.0  # This can be tuned
+        # Get the model name for parameter adaptation
+        model_name_for_params = self.__class__.__name__
+        original_lr = 5e-5  # Default, should be passed from training
+
+        # Get adaptive parameters
+        reinforced_params = get_reinforced_params(model_name_for_params, prev_best_f1_1, original_lr)
+        advanced_techniques = should_use_advanced_techniques(prev_best_f1_1)
+
+        # Apply parameters
+        new_lr = reinforced_params['learning_rate']
+        pos_weight_val = reinforced_params['class_1_weight']
         weight_tensor = torch.tensor([1.0, pos_weight_val], dtype=torch.float)
+
+        # Adjust epochs if specified
+        if 'n_epochs' in reinforced_params:
+            n_epochs_reinforced = reinforced_params['n_epochs']
+            self.logger.info(f"Adjusted reinforced epochs: {n_epochs_reinforced} (was {n_epochs_reinforced})")
+
+        self.logger.info(f"🎯 Reinforced Training Parameters (adapted for {model_name_for_params}):")
+        self.logger.info(f"   - Learning rate: {new_lr:.2e}")
+        self.logger.info(f"   - Class 1 weight: {pos_weight_val:.1f}")
+        self.logger.info(f"   - Epochs: {n_epochs_reinforced}")
+        self.logger.info(f"   - Advanced techniques: {[k for k, v in advanced_techniques.items() if v]}")
 
         # Set seeds again
         random.seed(random_state)
