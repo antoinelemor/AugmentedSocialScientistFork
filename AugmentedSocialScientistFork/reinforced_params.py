@@ -16,36 +16,36 @@ def get_reinforced_params(model_name: str, best_f1_1: float, original_lr: float 
         dict: Reinforced training parameters
     """
 
-    # Default aggressive parameters for F1_1 = 0 (complete failure)
+    # More balanced parameters to avoid overcorrection
     if best_f1_1 == 0.0:
-        # Model completely ignores class 1 - needs VERY aggressive intervention
+        # Model ignores class 1 - needs careful rebalancing, not overcorrection
         params = {
-            'learning_rate': original_lr * 3.0,  # Higher LR to force learning
-            'class_1_weight': 5.0,  # Heavy weight on minority class
-            'batch_size_multiplier': 0.25,  # Smaller batches for more updates
+            'learning_rate': original_lr * 1.5,  # Moderate increase to avoid instability
+            'class_1_weight': 2.5,  # Balanced weight to avoid flipping all predictions
+            'batch_size_multiplier': 0.5,  # Smaller batches for more updates
             'n_epochs': 15,  # More epochs needed for recovery
             'warmup_ratio': 0.2,  # Gradual warmup to avoid instability
-            'gradient_accumulation': 4,  # Accumulate gradients for stability
-            'label_smoothing': 0.1,  # Prevent overconfidence
-            'dropout_increase': 0.1,  # Add more dropout to prevent overfitting
+            'gradient_accumulation': 2,  # Some accumulation for stability
+            'label_smoothing': 0.05,  # Light smoothing to prevent overconfidence
+            'dropout_increase': 0.05,  # Light dropout to prevent overfitting
         }
     elif best_f1_1 < 0.3:
-        # Model has some signal but very poor - needs strong intervention
+        # Model has some signal but very poor - needs moderate intervention
         params = {
-            'learning_rate': original_lr * 2.0,
-            'class_1_weight': 3.0,
+            'learning_rate': original_lr * 1.25,
+            'class_1_weight': 2.0,
             'batch_size_multiplier': 0.5,
             'n_epochs': 10,
             'warmup_ratio': 0.1,
             'gradient_accumulation': 2,
-            'label_smoothing': 0.05,
-            'dropout_increase': 0.05,
+            'label_smoothing': 0.03,
+            'dropout_increase': 0.03,
         }
     else:
-        # Model is below threshold but not catastrophic - moderate intervention
+        # Model is below threshold but not catastrophic - light intervention
         params = {
-            'learning_rate': original_lr * 1.5,
-            'class_1_weight': 2.0,
+            'learning_rate': original_lr * 1.2,
+            'class_1_weight': 1.5,
             'batch_size_multiplier': 0.75,
             'n_epochs': 8,
             'warmup_ratio': 0.1,
@@ -59,9 +59,9 @@ def get_reinforced_params(model_name: str, best_f1_1: float, original_lr: float 
 
     # XLM-RoBERTa: Known to struggle with imbalanced data
     if 'xlm' in model_lower and 'roberta' in model_lower:
-        params['learning_rate'] *= 1.5  # Even more aggressive LR
-        params['class_1_weight'] *= 1.5  # Even more weight on minority
-        params['n_epochs'] = min(20, int(params['n_epochs'] * 1.5))  # More epochs
+        params['learning_rate'] *= 1.1  # Slight increase, avoid instability
+        params['class_1_weight'] *= 1.2  # Moderate increase to avoid overcorrection
+        params['n_epochs'] = min(20, int(params['n_epochs'] * 1.3))  # More epochs
         params['use_focal_loss'] = True  # Use focal loss for hard examples
         params['focal_gamma'] = 2.0
 

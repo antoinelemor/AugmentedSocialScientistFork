@@ -1225,8 +1225,10 @@ class BertBase(BertABC):
               - best_model_path is the path to the best model (reinforced if improved).
               - best_scores is the final (precision, recall, f1, support) from sklearn metrics.
         """
-        print("=== Reinforced Training Mode ===")
-        print("Oversampling class 1, larger batch size, lower LR, weighted CE loss...")
+        # Reinforced training header with color formatting
+        self.logger.info("\n%s", f"{Fore.MAGENTA}{'='*80}{Style.RESET_ALL}")
+        self.logger.info("%s", f"{Fore.MAGENTA}{'REINFORCED TRAINING START':^80}{Style.RESET_ALL}")
+        self.logger.info("%s", f"{Fore.MAGENTA}{'='*80}{Style.RESET_ALL}\n")
 
         # Prepare new CSV for reinforced training metrics
         os.makedirs(metrics_output_dir, exist_ok=True)
@@ -1315,11 +1317,16 @@ class BertBase(BertABC):
             n_epochs_reinforced = reinforced_params['n_epochs']
             self.logger.info(f"Adjusted reinforced epochs: {n_epochs_reinforced} (was {n_epochs_reinforced})")
 
-        self.logger.info(f"🎯 Reinforced Training Parameters (adapted for {model_name_for_params}):")
-        self.logger.info(f"   - Learning rate: {new_lr:.2e}")
-        self.logger.info(f"   - Class 1 weight: {pos_weight_val:.1f}")
-        self.logger.info(f"   - Epochs: {n_epochs_reinforced}")
-        self.logger.info(f"   - Advanced techniques: {[k for k, v in advanced_techniques.items() if v]}")
+        # Display parameters with formatting
+        self.logger.info("%s", f"{Fore.CYAN}🎯 Reinforced Training Parameters{Style.RESET_ALL}")
+        self.logger.info("  Model: %s", model_name_for_params)
+        self.logger.info("  Learning rate: %s", f"{Fore.GREEN}{new_lr:.2e}{Style.RESET_ALL}")
+        self.logger.info("  Class 1 weight: %s", f"{Fore.GREEN}{pos_weight_val:.1f}{Style.RESET_ALL}")
+        self.logger.info("  Epochs: %s", f"{Fore.GREEN}{n_epochs_reinforced}{Style.RESET_ALL}")
+        active_techniques = [k.replace('use_', '') for k, v in advanced_techniques.items() if v]
+        if active_techniques:
+            self.logger.info("  Advanced techniques: %s", f"{Fore.CYAN}{', '.join(active_techniques)}{Style.RESET_ALL}")
+        self.logger.info("")
 
         # Set seeds again
         random.seed(random_state)
@@ -1330,7 +1337,7 @@ class BertBase(BertABC):
         # Load from base_model_path if given, else from self.model_name
         if base_model_path:
             model = self.model_sequence_classifier.from_pretrained(base_model_path)
-            print(f"Loaded base model from {base_model_path} for reinforced training.")
+            self.logger.info("📥 Loaded base model from: %s", base_model_path)
         else:
             model = self.model_sequence_classifier.from_pretrained(
                 self.model_name,
@@ -1338,7 +1345,7 @@ class BertBase(BertABC):
                 output_attentions=False,
                 output_hidden_states=False
             )
-            print("No base_model_path provided. Using fresh model from self.model_name.")
+            self.logger.info("📥 Using fresh model from: %s", self.model_name)
         model.to(self.device)
 
         optimizer = AdamW(model.parameters(), lr=new_lr, eps=1e-8)
@@ -1377,7 +1384,16 @@ class BertBase(BertABC):
 
         # Reinforced training epochs
         for epoch in range(n_epochs_reinforced):
-            print(f"\n=== Reinforced Training: Epoch {epoch+1}/{n_epochs_reinforced} ===")
+            epoch_start_time = time.time()
+
+            # Epoch header with color (matching normal training)
+            self.logger.info("%s", f"\n{Fore.MAGENTA}{'━'*80}{Style.RESET_ALL}")
+            self.logger.info("%s", f"{Fore.MAGENTA}  Reinforced Epoch {epoch + 1}/{n_epochs_reinforced}{Style.RESET_ALL}")
+            self.logger.info("%s", f"{Fore.MAGENTA}{'━'*80}{Style.RESET_ALL}\n")
+
+            # Training phase
+            self.logger.info("%s", f"{Fore.GREEN}📚 Training Phase{Style.RESET_ALL}")
+
             t0 = time.time()
             model.train()
             running_loss = 0.0
@@ -1385,7 +1401,14 @@ class BertBase(BertABC):
             # Weighted cross entropy (for 2 classes) with emphasis on class 1
             criterion = torch.nn.CrossEntropyLoss(weight=weight_tensor.to(self.device))
 
-            for step, train_batch in enumerate(new_train_dataloader):
+            # Create progress bar for training batches
+            train_pbar = tqdm(new_train_dataloader,
+                            desc=f"  Training",
+                            unit="batch",
+                            bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+                            colour='green')
+
+            for step, train_batch in enumerate(train_pbar):
                 b_inputs = train_batch[0].to(self.device)
                 b_masks = train_batch[1].to(self.device)
                 b_labels = train_batch[2].to(self.device)
@@ -1405,15 +1428,30 @@ class BertBase(BertABC):
 
             avg_train_loss = running_loss / len(new_train_dataloader)
             elapsed_str = self.format_time(time.time() - t0)
-            print(f"  [Reinforced] Average train loss: {avg_train_loss:.4f}  Elapsed: {elapsed_str}")
 
-            # Validation
+            # Training summary
+            self.logger.info("")
+            self.logger.info("  Training complete")
+            self.logger.info("    Average loss: %s", f"{Fore.YELLOW}{avg_train_loss:.4f}{Style.RESET_ALL}")
+            self.logger.info("    Time elapsed: %s", elapsed_str)
+            self.logger.info("")
+
+            # Validation phase
+            self.logger.info("%s", f"{Fore.BLUE}🔍 Validation Phase{Style.RESET_ALL}")
+
             model.eval()
             total_val_loss = 0.0
             logits_complete = []
             eval_labels = []
 
-            for test_batch in test_dataloader:
+            # Create progress bar for validation
+            val_pbar = tqdm(test_dataloader,
+                          desc=f"  Validating",
+                          unit="batch",
+                          bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]',
+                          colour='blue')
+
+            for test_batch in val_pbar:
                 b_inputs = test_batch[0].to(self.device)
                 b_masks = test_batch[1].to(self.device)
                 b_labels = test_batch[2].to(self.device)
@@ -1450,7 +1488,27 @@ class BertBase(BertABC):
 
             macro_f1 = macro_avg["f1-score"]
 
-            print(classification_report(eval_labels, val_preds))
+            # Display validation metrics with formatting
+            self.logger.info("")
+            self.logger.info("  Validation complete")
+            self.logger.info("    Validation loss: %s", f"{Fore.YELLOW}{avg_val_loss:.4f}{Style.RESET_ALL}")
+            self.logger.info("")
+
+            # Display classification metrics in a table format
+            self.logger.info("%s", f"{Fore.CYAN}📊 Performance Metrics{Style.RESET_ALL}")
+            self.logger.info("  %s", "Class    Precision  Recall     F1-score   Support")
+            self.logger.info("  %s", "─"*60)
+
+            # Color code F1 scores
+            f1_0_color = Fore.GREEN if f1_0 >= 0.7 else Fore.YELLOW if f1_0 >= 0.5 else Fore.RED
+            f1_1_color = Fore.GREEN if f1_1 >= 0.7 else Fore.YELLOW if f1_1 >= 0.5 else Fore.RED
+
+            self.logger.info("  %s", f"0        {precision_0:.4f}     {recall_0:.4f}     {f1_0_color}{f1_0:.4f}{Style.RESET_ALL}     {int(support_0)}")
+            self.logger.info("  %s", f"1        {precision_1:.4f}     {recall_1:.4f}     {f1_1_color}{f1_1:.4f}{Style.RESET_ALL}     {int(support_1)}")
+            self.logger.info("  %s", "─"*60)
+            macro_color = Fore.GREEN if macro_f1 >= 0.7 else Fore.YELLOW if macro_f1 >= 0.5 else Fore.RED
+            self.logger.info("  %s", f"Macro F1: {macro_color}{macro_f1:.4f}{Style.RESET_ALL}")
+            self.logger.info("")
 
             # Calculate language-specific metrics if tracking
             language_metrics = {}
@@ -1498,13 +1556,16 @@ class BertBase(BertABC):
                         'macro_f1': lang_macro_f1
                     }
 
-                # Print language metrics
-                print("\nLanguage-specific metrics (Reinforced):")
-                print(f"  {'Language':<12} {'Accuracy':<12} {'F1 Class 0':<12} {'F1 Class 1':<12} {'Macro F1':<12}")
-                print(f"  {'─'*12} {'─'*12} {'─'*12} {'─'*12} {'─'*12}")
+                # Display language metrics with formatting
+                self.logger.info("%s", f"{Fore.CYAN}🌍 Language-Specific Metrics{Style.RESET_ALL}")
+                self.logger.info("  %s", f"{'Language':<12} {'Accuracy':<12} {'F1 Class 0':<12} {'F1 Class 1':<12} {'Macro F1':<12}")
+                self.logger.info("  %s", f"{'─'*12} {'─'*12} {'─'*12} {'─'*12} {'─'*12}")
                 for lang in sorted(language_metrics.keys()):
                     metrics = language_metrics[lang]
-                    print(f"  {lang:<12} {metrics['accuracy']:<12.3f} {metrics['f1_0']:<12.3f} {metrics['f1_1']:<12.3f} {metrics['macro_f1']:<12.3f}")
+                    # Color code F1 class 1
+                    lang_f1_1_color = Fore.GREEN if metrics['f1_1'] >= 0.7 else Fore.YELLOW if metrics['f1_1'] >= 0.5 else Fore.RED
+                    self.logger.info("  %s", f"{lang:<12} {metrics['accuracy']:<12.3f} {metrics['f1_0']:<12.3f} {lang_f1_1_color}{metrics['f1_1']:<12.3f}{Style.RESET_ALL} {metrics['macro_f1']:<12.3f}")
+                self.logger.info("")
 
             # Save epoch metrics to reinforced_training_metrics.csv
             with open(reinforced_metrics_csv, mode='a', newline='', encoding='utf-8') as f:
@@ -1580,7 +1641,7 @@ class BertBase(BertABC):
 
             # Standard best-model selection logic
             if new_metric_val > best_metric_val:
-                print(f"New best (reinforced) model found at epoch {epoch + 1} with combined metric={combined_metric:.4f}.")
+                self.logger.info("%s", f"{Fore.GREEN}✓ New best model! Combined metric: {combined_metric:.4f}{Style.RESET_ALL}")
                 # Remove old best model if needed
                 if best_model_path_local is not None and os.path.isdir(best_model_path_local):
                     try:
@@ -1714,9 +1775,10 @@ class BertBase(BertABC):
                     shutil.rmtree(final_path)
                 os.rename(best_model_path_local, final_path)
                 best_model_path_local = final_path
-                print(f"Reinforced best model saved at: {best_model_path_local}")
+                self.logger.info("")
+                self.logger.info("%s", f"{Fore.GREEN}💾 Best model saved at: {best_model_path_local}{Style.RESET_ALL}")
             elif save_model_as is not None and best_model_path_local is None:
-                print(f"Warning: No improvement found during reinforced training")
+                self.logger.warning("%s", f"{Fore.YELLOW}⚠️  No improvement found during reinforced training{Style.RESET_ALL}")
                 # Keep the previous best model if it exists
                 best_model_path_local = f"./models/{save_model_as}"
                 if not os.path.exists(best_model_path_local):
@@ -1728,9 +1790,12 @@ class BertBase(BertABC):
                     torch.save(model_to_save.state_dict(), output_model_file)
                     model_to_save.config.to_json_file(output_config_file)
                     self.tokenizer.save_vocabulary(best_model_path_local)
-                    print(f"Current model saved as fallback at: {best_model_path_local}")
+                    self.logger.info("%s", f"{Fore.CYAN}💾 Current model saved as fallback at: {best_model_path_local}{Style.RESET_ALL}")
 
-        print("Reinforced training complete.\n")
+        # Completion message
+        self.logger.info("\n%s", f"{Fore.MAGENTA}{'='*80}{Style.RESET_ALL}")
+        self.logger.info("%s", f"{Fore.MAGENTA}{'REINFORCED TRAINING COMPLETE':^80}{Style.RESET_ALL}")
+        self.logger.info("%s", f"{Fore.MAGENTA}{'='*80}{Style.RESET_ALL}\n")
         return best_metric_val, best_model_path_local, best_scores
 
     def predict(
