@@ -1234,8 +1234,10 @@ class BertBase(BertABC):
         os.makedirs(metrics_output_dir, exist_ok=True)
         reinforced_metrics_csv = os.path.join(metrics_output_dir, "reinforced_training_metrics.csv")
 
-        # Create headers for reinforced metrics CSV
+        # Create headers for reinforced metrics CSV (include model identifiers)
         reinforced_headers = [
+            "model_identifier",
+            "model_type",
             "epoch",
             "train_loss",
             "val_loss",
@@ -1568,9 +1570,62 @@ class BertBase(BertABC):
                 self.logger.info("")
 
             # Save epoch metrics to reinforced_training_metrics.csv
+            # Get model type for logging
+            model_type = self.model_name if hasattr(self, 'model_name') else self.__class__.__name__
+
             with open(reinforced_metrics_csv, mode='a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 row = [
+                    model_identifier if model_identifier else "",
+                    model_type,
+                    epoch + 1,
+                    avg_train_loss,
+                    avg_val_loss,
+                    precision_0,
+                    recall_0,
+                    f1_0,
+                    support_0,
+                    precision_1,
+                    recall_1,
+                    f1_1,
+                    support_1,
+                    macro_f1
+                ]
+
+                # Add language metrics if available
+                if track_languages and language_info is not None and language_metrics:
+                    unique_languages = list(set(language_info))
+                    for lang in sorted(unique_languages):
+                        if lang in language_metrics:
+                            row.extend([
+                                language_metrics[lang]['accuracy'],
+                                language_metrics[lang]['precision_0'],
+                                language_metrics[lang]['recall_0'],
+                                language_metrics[lang]['f1_0'],
+                                language_metrics[lang]['support_0'],
+                                language_metrics[lang]['precision_1'],
+                                language_metrics[lang]['recall_1'],
+                                language_metrics[lang]['f1_1'],
+                                language_metrics[lang]['support_1'],
+                                language_metrics[lang]['macro_f1']
+                            ])
+                        else:
+                            row.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+                writer.writerow(row)
+
+            # Also append to training_metrics.csv (to consolidate all epochs in one file)
+            training_metrics_csv = os.path.join(metrics_output_dir, "training_metrics.csv")
+            with open(training_metrics_csv, mode='a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+
+                # Get timestamp for this entry
+                current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                row = [
+                    model_identifier if model_identifier else "",
+                    model_type,
+                    current_timestamp,
                     epoch + 1,
                     avg_train_loss,
                     avg_val_loss,
